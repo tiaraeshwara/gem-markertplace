@@ -1,0 +1,201 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  seller
+  buyer
+  admin
+}
+
+enum GemStatus {
+  draft
+  pending_review
+  approved
+  rejected
+  sold
+}
+
+enum ReservationStatus {
+  active
+  cancelled
+  selected
+  expired
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  fullName     String?  @map("full_name")
+  phone        String?
+  avatarUrl    String?  @map("avatar_url")
+  isVerified   Boolean  @default(false) @map("is_verified")
+  isActive     Boolean  @default(true) @map("is_active")
+  verifyToken  String?  @map("verify_token")
+  resetToken   String?  @map("reset_token")
+  resetTokenExpiry DateTime? @map("reset_token_expiry")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  gemsAsSeller      Gem[]          @relation("SellerGems")
+  gemsAsAdmin       Gem[]          @relation("AdminGems")
+  reservations      Reservation[]
+  valuations        Valuation[]
+  chatRoomsAsSeller ChatRoom[]     @relation("SellerChatRooms")
+  chatRoomsAsBuyer  ChatRoom[]     @relation("BuyerChatRooms")
+  messages          Message[]
+  notifications     Notification[]
+  refreshTokens     RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Gem {
+  id             String    @id @default(uuid())
+  sellerId       String    @map("seller_id")
+  title          String
+  description    String?
+  category       String
+  weightCarats   Decimal   @map("weight_carats") @db.Decimal(10, 3)
+  color          String?
+  clarity        String?
+  cut            String?
+  dimensions     Json?
+  origin         String?
+  treatment      String?
+  certificateUrl String?   @map("certificate_url")
+  certificateNo  String?   @map("certificate_no")
+  askingPrice    Decimal   @map("asking_price") @db.Decimal(12, 2)
+  status         GemStatus @default(draft)
+  rejectionNote  String?   @map("rejection_note")
+  adminId        String?   @map("admin_id")
+  reviewedAt     DateTime? @map("reviewed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  seller       User          @relation("SellerGems", fields: [sellerId], references: [id])
+  admin        User?         @relation("AdminGems", fields: [adminId], references: [id])
+  images       GemImage[]
+  reservations Reservation[]
+  valuations   Valuation[]
+  chatRooms    ChatRoom[]
+
+  @@map("gems")
+}
+
+model GemImage {
+  id        String  @id @default(uuid())
+  gemId     String  @map("gem_id")
+  url       String
+  publicId  String? @map("public_id")
+  isPrimary Boolean @default(false) @map("is_primary")
+  order     Int     @default(0)
+
+  gem Gem @relation(fields: [gemId], references: [id], onDelete: Cascade)
+
+  @@map("gem_images")
+}
+
+model Reservation {
+  id        String            @id @default(uuid())
+  gemId     String            @map("gem_id")
+  buyerId   String            @map("buyer_id")
+  status    ReservationStatus @default(active)
+  expiresAt DateTime          @map("expires_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  gem        Gem         @relation(fields: [gemId], references: [id])
+  buyer      User        @relation(fields: [buyerId], references: [id])
+  valuations Valuation[]
+
+  @@map("reservations")
+}
+
+model Valuation {
+  id            String   @id @default(uuid())
+  gemId         String   @map("gem_id")
+  buyerId       String   @map("buyer_id")
+  reservationId String   @map("reservation_id")
+  offeredPrice  Decimal  @map("offered_price") @db.Decimal(12, 2)
+  message       String?
+  isSelected    Boolean  @default(false) @map("is_selected")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  gem         Gem         @relation(fields: [gemId], references: [id])
+  buyer       User        @relation(fields: [buyerId], references: [id])
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  chatRoom    ChatRoom?
+
+  @@map("valuations")
+}
+
+model ChatRoom {
+  id          String   @id @default(uuid())
+  gemId       String   @map("gem_id")
+  sellerId    String   @map("seller_id")
+  buyerId     String   @map("buyer_id")
+  valuationId String   @unique @map("valuation_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  gem       Gem       @relation(fields: [gemId], references: [id])
+  seller    User      @relation("SellerChatRooms", fields: [sellerId], references: [id])
+  buyer     User      @relation("BuyerChatRooms", fields: [buyerId], references: [id])
+  valuation Valuation @relation(fields: [valuationId], references: [id])
+  messages  Message[]
+
+  @@map("chat_rooms")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  roomId    String   @map("room_id")
+  senderId  String   @map("sender_id")
+  content   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  room   ChatRoom @relation(fields: [roomId], references: [id])
+  sender User     @relation(fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  body      String
+  isRead    Boolean  @default(false) @map("is_read")
+  data      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
